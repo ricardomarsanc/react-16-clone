@@ -125,6 +125,17 @@ This means we need to build fibers differently depending on whether they were pa
 
 > Updating props is more or less easy since they just need to be added as-is to the new element, but for event listeners the process is a bit more tricky, cause we need to add and remove them using the inner DOM functions `.addEventListener` and `.removeEventListener`.
 
+### Add support for functional components
+
+The current implementation of `createElement` does not support transpiling functions. Function components are different than elements in two ways:
+
+- The fiber from a function component doesn't have a DOM node.
+- The `children` come from running the function instead of getting them directly from the `props`.
+
+Now that we support passing functions to the `createElement` function, the `type` property can be an HTML tag (string) or a function, so it can be executed with the `props` in order to get the `children`. The rest of the implementation remains the same.
+
+The only other change needed is a couple of extra checks when commiting the work. Since function components doesn't have a DOM node associated, it is necessary to go up the tree an indeterminate number of levels to find the first parent fiber which has a DOM node associated. This is necessary for appending elements but also for deleting them, since it is necessary to delete the DOM node from the tree.
+
 ## Troubleshooting
 
 Notes for anyone who wants to run the project (most likely myself in several months, if so).
