@@ -136,8 +136,6 @@ Now that we support passing functions to the `createElement` function, the `type
 
 The only other change needed is a couple of extra checks when commiting the work. Since function components doesn't have a DOM node associated, it is necessary to go up the tree an indeterminate number of levels to find the first parent fiber which has a DOM node associated. This is necessary for appending elements but also for deleting them, since it is necessary to delete the DOM node from the tree.
 
-### Add support for Hooks (state)
-
 ## Troubleshooting
 
 Notes for anyone who wants to run the project (most likely myself in several months, if so).
