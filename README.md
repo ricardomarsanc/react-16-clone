@@ -2,32 +2,31 @@
 
 The purpose of this project is to gain a deeper understanding on how React works internally.
 
-Features this bare bone React version includes:
+Features this bare bone React version includes, in order of development:
 
-- `createElement` function
-- `render` function
-- Concurrent Mode
-- Fibers (VDOM building tool)
-- Render and Commit phases
-- Reconciliation
-- Support for Function components
-- Support for hooks
-- This minified version of React DOES NOT support class components
+1. `createElement` function
+2. `render` function
+3. Concurrent Mode
+4. Fibers (VDOM building tool)
+5. Render and Commit phases
+6. Reconciliation
+7. Support for Function components
+8. Support for hooks
+9. This minified version of React DOES NOT support class components
 
-Based on an article [published by Rodrigo Pombo back in 2019](https://pomb.us/build-your-own-react/)
+Based on an article [published by Rodrigo Pombo back in 2019](https://pomb.us/build-your-own-react/).
 
 ## Development notes
 
-### From JSX to JS
+### How is JSX transpiled to JS?
 
-We're so accustomed to JSX that we give certain things for granted. In order to understand React, we need to
-understand first how JSX syntax works, and how it differs from JS. Given the following JSX code:
+Given the following JSX code:
 
 ```jsx
 const element = <h1 title="foo">Hello, world!</h1>
 ```
 
-What is happening in the background is that React is calling its `createElement()` function internally:
+What is happening in the background is that **React** is calling its `createElement` function internally:
 
 ```js
 const element = React.createElement(
@@ -37,7 +36,7 @@ const element = React.createElement(
 )
 ```
 
-The `createElement()` function creates an object from its arguments, that would look similar to this one:
+The `createElement` function creates an **object** from its arguments, that would look like this:
 
 ```js
 const element = {
@@ -49,27 +48,27 @@ const element = {
 }
 ```
 
-This is, in summary, what a React element is, an object with two properties: `type` and `props`.
+This is, in summary, what a React element is: **an object with two properties: `type` and `props`**.
 
-> `children` in this case is a string, but it’s usually an array with more elements. That’s why elements are also trees.
+> `children` in this case is a string, but usually it is an array with more React elements (objects with `type`, `props`, and `children` as well). So React elements have a tree structure, in which there's a root element with one or more elements anidated, and this goes on _ad-infinitum_.
 
 ### Creating a custom `createElement` function
 
 The `createElement` function creates React elements from a set of properties that define HTML nodes. This elements are objects disposed in a tree structure that makes the VDOM easier to compose.
 
-The `createElement` function accepts a `type` (HTML tag), some `props` (HTML attributes and _custom props_), and an array of `children`, that will be returned inside the `props` object in the result element (or empty array if none have been passed).
+This function accepts a `type` (HTML tag), some `props` (HTML attributes and _custom **props**_), and an array of `children`, that will be returned inside the `props` object in the result element (or empty array if none have been passed).
 
-We took into account that sometimes `children` are primitive values, so we created a helper `createTextElement` function that is called when a `children` is not of type `object`.
+It has to be taken into account that sometimes `children` are primitive values, so a helper function `createTextElement` was created to be called when a `children` is not of type `object`.
 
-> React doesn’t wrap primitive values or create empty arrays when there aren’t children, but in this case we did it to simplify the code.
+> In the real world, React doesn’t wrap primitive values or create empty arrays when there are no children, but in this case it was done like this to simplify the code.
 
-### Creating a custom React that Babel can treat as an API
+### Creating a custom React-like API that Babel can use to transpile JSX
 
-Our custom React is called RReact (I know, very original).
+This custom clone of React is called RReact (quite original).
 
-**But we still want to use JSX here**. How do we tell Babel to use RReact’s `createElement` instead of React’s?
+**But we still want to use JSX here**. How do we tell Babel to use RReact’s `createElement` instead of the original React’s function?
 
-We can add a decorator to our code to tell Babel to use our function instead of React's one when transpiling JSX:
+We can add a comment to our code to tell Babel to use our function instead of React's one when transpiling JSX:
 
 ```jsx
 /** @jsx RReact.createElement */
@@ -81,16 +80,59 @@ const element = (
 )
 ```
 
-> We don't need the same decorator comment for the `render` function. This is because the `babel/preset-react` plugin included with `react-scripts` has some default rules for transforming JSX into JS, and one of them is the "Automatic runtime" feature, which uses `React` as the default API, in order to avoid explicit imports (not needed from React v17). `render` function comes from `ReactDOM`, and there's no default runtime for that function, so we can safely use ours instead.
+> We don't need the same comment for the `render` function. This is because the `babel/preset-react` plugin included with `react-scripts` has some default rules for transforming JSX into JS, and one of them is the "Automatic runtime" feature, which uses `React` as the default API, in order to avoid the need of explicit imports (not needed from React v17). `render` function comes from `ReactDOM`, and there's no default runtime for that API, so we can safely use ours instead.
+
+### It works! 🤖
+
+At this point in the commit history, the first tiny version of the project should be working fine. In order to be sure the custom RReact API is being used behind the scenes, notice that **we didn't import React/ReactDOM into our `index.js`**. Also, checking the build files generated by Webpack inside the browser tools "Sources" tab, should make clear that the functions used during the transpilation were the RReact ones.
+
+> Notice that no `webpack` or `babel` config was added to the project, nor any related plugins. This is because the (now deprecated) `react-scripts` library has all those things built-in and pre-configured by default for running React apps with a minimal setup. There are alternatives to expose/customize the `webpack` and transpiler options, like **ejecting** or using a third-party library like `craco`. Nowadays most configurations are exposed OOB when building React apps with frameworks like `NextJS` or `Vite`.
+
+### Concurrent mode and Fibers
+
+The current implementation has a problem: the `render` function builds the whole tree synchronously. This means the main thread is blocked until the whole tree has been built. This is not ideal.
+
+In order to avoid this, it is possible to divide the work into small chunks and let the browser interrupt the rendering everytime a new piece of work is finished.
+
+For that, a `requestIdleCallback` function can be used to control a loop that builds chunks of the tree and is only called whenever the main thread is idle.
+
+> React doesn't use a `requestIdleCallback` anymore. Now it uses the _Scheduler package_. But for this use case is conceptually the same.
+
+**Fibers**
+
+**Each fiber is a React element and also a _unit of work_**. The `root` element (fiber) is set as the first `nextUnitOfWork`, and then the `performUnitOfWork` function will perform the work and also find and return the next unit of work, until the tree has been built. In order to easily find the `nextUnitOfWork`, each fiber also has a link to its first child, its next sibling and its parent.
+
+The way to find the next unit of work is the following:
+
+- If the current fiber has any child, that will be the next unit of work.
+- If not, check if the fiber has any sibling, and assign it as the next unit of work.
+- If there are no children nor siblings, the fiber parent's next sibling will be the next unit of work.
+- If at some point we reach the `root` fiber, it means the tree building has been completed.
+
+### Render and Commit phases
+
+The solution to the previous problem caused another one. Now a new node is added to the DOM each time a unit of work is finished. Since the browser can interrupt that work before the whole tree has been rendered, it can happen that the user sees an incomplete UI.
+
+To avoid that, it is necessary to remove the code which adds the element to the DOM until a later phase (commit phase).
+
+For that, we'll keep track of the work in progress root of the tree, and once the whole fiber tree has been built, it will be commited to the DOM in a single step.
+
+**Reconciliation**
+
+In order to understand what changed from previous render, we need to **keep track of the last fiber tree** and compare elements received on the current `render` function to the last fiber tree commited to the DOM.
+
+This means we need to build fibers differently depending on whether they were part of the previous fiber tree or not, and add some `tags` to the result fibers of the current tree to mark them as "new", "updated" or "removed". Then, update the DOM accordingly.
+
+> Updating props is more or less easy since they just need to be added as-is to the new element, but for event listeners the process is a bit more tricky, cause we need to add and remove them using the inner DOM functions `.addEventListener` and `.removeEventListener`.
+
+## Troubleshooting
+
+Notes for anyone who wants to run the project (most likely myself in several months, if so).
 
 ### Starting local dev environment for newer Node versions
 
-The libraries used in this tiny project are way outdated even at the moment of developing it. If you get an `Error: error:0308010C:digital envelope routines::unsupported` error while running the start command (`npm start`), run this one instead:
+The libraries used in this tiny project are way outdated _even at the moment of developing it_. If you get an error `Error: error:0308010C:digital envelope routines::unsupported` while running the start command (`npm start`), run this one instead:
 
 ```bash
 NODE_OPTIONS=--openssl-legacy-provider npm start
 ```
-
-You can know our custom RReact is being used behind the scenes because **we didn't import React/ReactDOM into our `index.js`**
-
-> Notice that we didn't add any `webpack` or `babel` config, nor any related plugins. This is because the deprecated `react-scripts` library had everything built-in and pre-configured by default for running React apps with a minimal setup. There were alternatives to expose/customize the `webpack` and transpiler options, like **ejecting** or using a third-party library like `craco`. Nowadays most configurations are exposed OOB when building React apps with frameworks like `NextJS` or `Vite`.
