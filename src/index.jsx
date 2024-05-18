@@ -204,10 +204,51 @@ function performUnitOfWork(fiber) {
   }
 }
 
+let wipFiber = null
+let hookIndex = null
+
 function updateFunctionComponent(fiber) {
+  wipFiber = fiber
+  hookIndex = 0
+  wipFiber.hooks = []
+
   // type property of the fiber object is a function in case of a function component
   const children = [fiber.type(fiber.props)]
   reconcileChildren(fiber, children)
+}
+
+function useState(initial) {
+  const oldHook =
+    wipFiber.alternate &&
+    wipFiber.alternate.hooks &&
+    wipFiber.alternate.hooks[hookIndex]
+
+  const hook = {
+    state: oldHook ? oldHook.state : initial,
+    queue: [],
+  }
+
+  const actions = oldHook ? oldHook.queue : []
+  actions.forEach((action) => {
+    hook.state = action(hook.state)
+  })
+
+  const setState = (action) => {
+    hook.queue.push(action)
+
+    // after a state change, the component needs to be re-rendered, so we set the next unit of work to the root
+    wipRoot = {
+      dom: currentRoot.dom,
+      props: currentRoot.props,
+      alternate: currentRoot,
+    }
+    nextUnitOfWork = wipRoot
+    deletions = []
+  }
+
+  wipFiber.hooks.push(hook)
+  hookIndex++
+  return [hook.state, setState]
 }
 
 function updateHostComponent(fiber) {
@@ -274,16 +315,18 @@ function reconcileChildren(wipFiber, elements) {
 const RReact = {
   createElement,
   render,
+  useState,
 }
 
 // RReact App
 
 /** @jsx RReact.createElement */
-function App(props) {
-  return <h1>Hi, {props.name}</h1>
+function Counter(props) {
+  const [state, setState] = RReact.useState(1)
+  return <h1 onClick={() => setState((c) => c + 1)}>Count: {state}</h1>
 }
 
-const element = <App name="Ric" />
+const element = <Counter />
 const container = document.getElementById("root")
 
 RReact.render(element, container)
